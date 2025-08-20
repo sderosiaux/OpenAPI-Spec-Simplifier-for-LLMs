@@ -971,6 +971,11 @@
                     if (simpleValues.includes(obj) || /^[a-zA-Z_][a-zA-Z0-9_]*$/.test(obj)) {
                         return obj;
                     }
+                    
+                    // Remove quotes for our compact schema formats
+                    if (obj.startsWith('{') || obj.startsWith('[') || obj.includes('|') || obj.includes('[]') || obj.includes('&')) {
+                        return obj;
+                    }
                 }
                 return JSON.stringify(obj); // Keep quotes for complex strings or when optimization disabled
             }
