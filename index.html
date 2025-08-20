@@ -573,6 +573,7 @@
 
         function collectReferencedSchemas(spec) {
             const refs = new Set();
+            const processedSchemas = new Set(); // Prevent infinite loops
             
             function addRef(ref) {
                 if (ref && typeof ref === 'string' && ref.startsWith('#/components/schemas/')) {
@@ -600,12 +601,47 @@
             if (spec.paths) {
                 walkObject(spec.paths);
             }
+            
+            // Also walk through request/response bodies in components
+            if (spec.components) {
+                if (spec.components.requestBodies) {
+                    walkObject(spec.components.requestBodies);
+                }
+                if (spec.components.responses) {
+                    walkObject(spec.components.responses);
+                }
+                if (spec.components.parameters) {
+                    walkObject(spec.components.parameters);
+                }
+            }
+
+            // Recursively collect schemas that reference other schemas
+            function collectSchemaReferences(schemaName) {
+                if (processedSchemas.has(schemaName)) return;
+                processedSchemas.add(schemaName);
+                
+                const schema = spec.components?.schemas?.[schemaName];
+                if (schema) {
+                    // Walk through this schema to find more references
+                    const initialSize = refs.size;
+                    walkObject(schema);
+                    
+                    // If we found new references, process them recursively
+                    const newRefs = Array.from(refs).filter(ref => !processedSchemas.has(ref));
+                    newRefs.forEach(collectSchemaReferences);
+                }
+            }
+            
+            // Process all initially found schemas
+            const initialRefs = Array.from(refs);
+            initialRefs.forEach(collectSchemaReferences);
 
             // Add commonly needed schemas
             const seedSchemas = ['Error', 'Granularity', 'AggregationFunction', 'ResponseFormat'];
             seedSchemas.forEach(schema => {
                 if (spec.components?.schemas?.[schema]) {
                     refs.add(schema);
+                    collectSchemaReferences(schema);
                 }
             });
 
