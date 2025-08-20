@@ -493,46 +493,70 @@
             return Array.from(refs);
         }
 
+        function simplifyType(type, format) {
+            const typeMap = {
+                'string': 'str',
+                'integer': 'int',
+                'number': 'num',
+                'boolean': 'bool',
+                'array': 'arr',
+                'object': 'obj'
+            };
+            
+            const baseType = typeMap[type] || type;
+            
+            // Simplify common formats to more compact versions
+            if (format === 'int64') return 'int64';
+            if (format === 'int32') return 'int32';
+            if (format === 'float') return 'float';
+            if (format === 'double') return 'double';
+            if (format === 'date-time') return 'datetime';
+            if (format === 'date') return 'date';
+            
+            return format ? `${baseType}(${format})` : baseType;
+        }
+
         function simplifySchema(schema) {
             if (!schema || typeof schema !== 'object') return schema;
             
-            // If it's a simple type with just a type field, use compact format
-            if (schema.type && Object.keys(schema).length === 1) {
-                return schema.type;
+            // Handle $ref
+            if (schema.$ref) {
+                return cleanSchemaRef(schema.$ref);
             }
             
-            // If it has type and format only, combine them
-            if (schema.type && schema.format && Object.keys(schema).length === 2) {
-                return `${schema.type}(${schema.format})`;
-            }
-            
-            const simplified = {};
-            
-            // Keep essential fields
-            if (schema.type) simplified.type = schema.type;
-            if (schema.format) simplified.format = schema.format;
-            if (schema.enum) simplified.enum = schema.enum;
-            if (schema.required) simplified.required = schema.required;
-            if (schema.$ref) simplified.$ref = cleanSchemaRef(schema.$ref);
-            
-            // Simplify properties using compact format
-            if (schema.properties) {
-                simplified.properties = {};
-                for (const [key, prop] of Object.entries(schema.properties)) {
-                    const simplifiedProp = simplifySchema(prop);
-                    
-                    // Use compact "[type] [name]" format for simple properties
-                    if (typeof simplifiedProp === 'string') {
-                        simplified.properties[`${simplifiedProp} ${key}`] = true;
-                    } else {
-                        simplified.properties[key] = simplifiedProp;
-                    }
+            // Handle simple types
+            if (schema.type && !schema.properties && !schema.items) {
+                if (schema.enum) {
+                    return `${simplifyType(schema.type, schema.format)}[${schema.enum.join('|')}]`;
                 }
+                return simplifyType(schema.type, schema.format);
             }
             
-            if (schema.items) {
-                simplified.items = simplifySchema(schema.items);
+            // Handle objects with properties - use ultra-compact format
+            if (schema.type === 'object' && schema.properties) {
+                const required = schema.required || [];
+                const props = [];
+                
+                for (const [key, prop] of Object.entries(schema.properties)) {
+                    const isRequired = required.includes(key);
+                    const propType = simplifySchema(prop);
+                    const marker = isRequired ? '*' : '';
+                    props.push(`${key}${marker}:${propType}`);
+                }
+                
+                return `{${props.join(',')}}`;  
             }
+            
+            // Handle arrays
+            if (schema.type === 'array' && schema.items) {
+                const itemType = simplifySchema(schema.items);
+                return `${itemType}[]`;
+            }
+            
+            // Fallback to simplified object
+            const simplified = {};
+            if (schema.type) simplified.type = simplifyType(schema.type, schema.format);
+            if (schema.enum) simplified.enum = schema.enum;
             
             return simplified;
         }
@@ -559,7 +583,7 @@
                 simplified.sec = Object.keys(secSchemes);
             }
             
-            // Process endpoints
+            // Process endpoints - ultra-minimal format
             simplified.endpoints = [];
             
             if (spec.paths) {
@@ -567,59 +591,47 @@
                     for (const [method, operation] of Object.entries(pathItem)) {
                         if (!['get', 'post', 'put', 'patch', 'delete', 'head', 'options'].includes(method)) continue;
                         
-                        const endpoint = {
-                            m: method.toLowerCase(),
-                            p: path
-                        };
+                        let endpointStr = `${method}:${path}`;
                         
-                        // Add operation description if present
-                        const desc = truncateDescription(operation.summary || operation.description);
-                        if (desc) endpoint.desc = desc;
-                        
-                        // Parameters
+                        // Add query parameters
                         if (operation.parameters) {
-                            const pathParams = operation.parameters.filter(p => p.in === 'path');
                             const queryParams = operation.parameters.filter(p => p.in === 'query');
-                            
-                            if (pathParams.length) {
-                                endpoint.pp = pathParams.map(p => {
-                                    let paramStr = `${p.name}:${p.schema?.type || p.type || 'unknown'}`;
-                                    if (p.required === false) paramStr += '?'; // Mark optional params
-                                    return paramStr;
-                                });
-                            }
-                            
                             if (queryParams.length) {
-                                endpoint.qp = queryParams.map(p => {
-                                    let paramStr = `${p.name}:${p.schema?.type || p.type || 'unknown'}`;
-                                    if (p.required === false) paramStr += '?'; // Mark optional params
-                                    if (p.schema?.format) paramStr += `(${p.schema.format})`;
+                                const qpStrs = queryParams.map(p => {
+                                    const baseType = p.schema?.type || p.type || 'unknown';
+                                    const format = p.schema?.format;
+                                    const isOptional = p.required === false;
+                                    const typeStr = simplifyType(baseType, format);
+                                    
+                                    let paramStr = `${p.name}${isOptional ? '?' : ''}:${typeStr}`;
                                     if (p.schema?.enum) paramStr += `[${p.schema.enum.join('|')}]`;
                                     return paramStr;
                                 });
+                                endpointStr += `?${qpStrs.join('&')}`;
                             }
                         }
                         
-                        // Request body
-                        if (operation.requestBody) {
-                            const content = operation.requestBody.content;
-                            const jsonContent = content?.['application/json'];
-                            if (jsonContent?.schema?.$ref) {
-                                endpoint.req = cleanSchemaRef(jsonContent.schema.$ref);
-                            }
+                        // Add request body
+                        if (operation.requestBody?.content?.['application/json']?.schema?.$ref) {
+                            const reqType = cleanSchemaRef(operation.requestBody.content['application/json'].schema.$ref);
+                            endpointStr += ` <${reqType}`;
                         }
                         
-                        // Response
+                        // Add response
                         const responses = operation.responses;
                         const okResponse = responses?.['200'] || responses?.['201'];
                         if (okResponse?.content?.['application/json']?.schema?.$ref) {
-                            endpoint.res = cleanSchemaRef(okResponse.content['application/json'].schema.$ref);
+                            const resType = cleanSchemaRef(okResponse.content['application/json'].schema.$ref);
+                            endpointStr += ` >${resType}`;
                         }
                         
-                        // Status codes
-                        endpoint.codes = Object.keys(responses || {}).map(Number).filter(c => !isNaN(c));
+                        // Add description
+                        const desc = truncateDescription(operation.summary || operation.description);
+                        if (desc) {
+                            endpointStr += `|${desc}`;
+                        }
                         
-                        simplified.endpoints.push(endpoint);
+                        simplified.endpoints.push(endpointStr);
                     }
                 }
             }
