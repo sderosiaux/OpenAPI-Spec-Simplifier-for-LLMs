@@ -315,6 +315,12 @@
                     <div class="panel-header">
                         <h2 id="input-title">Input: OpenAPI Spec (JSON/YAML)</h2>
                         <div class="button-group">
+                            <select id="difficulty-mode" class="btn btn-primary" style="margin-right: 0.5rem;">
+                                <option value="nightmare">Nightmare! (Max Aggression)</option>
+                                <option value="ultra-violence">Ultra-Violence</option>
+                                <option value="hurt-plenty">Hurt Me Plenty</option>
+                                <option value="too-young">I'm Too Young to Die</option>
+                            </select>
                             <button id="load-example" class="btn btn-primary">
                                 Load Example
                             </button>
@@ -376,33 +382,58 @@
                 </div>
             </div>
 
-            <!-- Info Panel -->
+            <!-- Optimization Settings Panel -->
             <div class="info-panel">
-                <h3>How it works:</h3>
+                <h3>🎮 Difficulty Mode & Optimizations:</h3>
                 <div class="info-grid">
                     <div class="info-section">
-                        <h4>What's kept:</h4>
-                        <ul>
-                            <li>• Host URLs and security schemes</li>
-                            <li>• All endpoints with methods and paths</li>
-                            <li>• Brief descriptions (first 100 chars)</li>
-                            <li>• Parameter names, types, and requirements</li>
-                            <li>• Request/response schema references</li>
-                            <li>• Only referenced schemas with minimal fields</li>
-                            <li>• Status codes and enum values</li>
-                        </ul>
+                        <h4>Current Mode: <span id="current-mode-name">Nightmare!</span></h4>
+                        <p id="current-mode-desc" style="font-size: 0.875rem; margin-bottom: 1rem; opacity: 0.8;">Maximum Aggression - Zero mercy, zero unnecessary tokens</p>
+                        
+                        <div class="optimization-toggles" style="display: grid; gap: 0.5rem;">
+                            <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
+                                <input type="checkbox" id="opt-remove-quotes" checked>
+                                <span style="font-size: 0.875rem;">Remove unnecessary JSON quotes</span>
+                            </label>
+                            <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
+                                <input type="checkbox" id="opt-compact-schemas" checked>
+                                <span style="font-size: 0.875rem;">Compact schema format ({id*:int64})</span>
+                            </label>
+                            <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
+                                <input type="checkbox" id="opt-minimal-endpoints" checked>
+                                <span style="font-size: 0.875rem;">Ultra-minimal endpoints (get:/pets)</span>
+                            </label>
+                        </div>
                     </div>
                     <div class="info-section">
-                        <h4>What's removed:</h4>
-                        <ul>
-                            <li>• Long descriptions (truncated to 100 chars)</li>
-                            <li>• Examples and sample data</li>
-                            <li>• Documentation and markdown</li>
-                            <li>• Tags and external docs</li>
-                            <li>• Verbose titles and summaries</li>
-                            <li>• Unused schema definitions</li>
-                            <li>• Pretty formatting and whitespace</li>
-                        </ul>
+                        <h4>Advanced Optimizations:</h4>
+                        <div class="optimization-toggles" style="display: grid; gap: 0.5rem; margin-top: 1rem;">
+                            <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
+                                <input type="checkbox" id="opt-single-status-codes" checked>
+                                <span style="font-size: 0.875rem;">Single status codes (200 vs [200])</span>
+                            </label>
+                            <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
+                                <input type="checkbox" id="opt-simplify-types" checked>
+                                <span style="font-size: 0.875rem;">Simplify types (str vs string)</span>
+                            </label>
+                            <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
+                                <input type="checkbox" id="opt-compact-query-params" checked>
+                                <span style="font-size: 0.875rem;">Compact query params (?id:int)</span>
+                            </label>
+                            
+                            <div style="margin-top: 0.75rem;">
+                                <label style="font-size: 0.875rem; color: #374151; display: block; margin-bottom: 0.25rem;">Description length:</label>
+                                <div style="display: flex; align-items: center; gap: 0.5rem;">
+                                    <input type="range" id="desc-length-slider" min="0" max="300" value="0" style="flex: 1;">
+                                    <span id="desc-length-value" style="font-size: 0.875rem; color: #6b7280; min-width: 3rem;">0 chars</span>
+                                </div>
+                                <div style="font-size: 0.75rem; color: #9ca3af; margin-top: 0.25rem;">0 = remove all descriptions</div>
+                            </div>
+                        </div>
+                        
+                        <div style="margin-top: 1rem; padding: 0.75rem; background: rgba(59, 130, 246, 0.1); border-radius: 0.375rem; font-size: 0.875rem;">
+                            💡 Select a difficulty mode above to apply presets, or customize individual optimizations manually.
+                        </div>
                     </div>
                 </div>
             </div>
@@ -415,6 +446,78 @@
         let outputSpec = '';
         let isProcessing = false;
         let processTimeout = null;
+        
+        // Optimization settings
+        let optimizations = {
+            removeQuotes: true,
+            compactSchemas: true,
+            minimalEndpoints: true,
+            singleStatusCodes: true,
+            simplifyTypes: true,
+            compactQueryParams: true,
+            descriptionLength: 0
+        };
+        
+        // Always-on optimizations (not toggleable)
+        const alwaysOn = {
+            removeSpaces: true
+        };
+        
+        // Difficulty presets
+        const difficultyModes = {
+            'too-young': {
+                name: "I'm Too Young to Die",
+                desc: "Conservative - Keep most formatting for readability",
+                settings: {
+                    removeQuotes: false,
+                    compactSchemas: false,
+                    minimalEndpoints: false,
+                    singleStatusCodes: false,
+                    simplifyTypes: false,
+                    compactQueryParams: false,
+                    descriptionLength: 200
+                }
+            },
+            'hurt-plenty': {
+                name: "Hurt Me Plenty",
+                desc: "Balanced - Good compression with decent readability",
+                settings: {
+                    removeQuotes: true,
+                    compactSchemas: true,
+                    minimalEndpoints: false,
+                    singleStatusCodes: true,
+                    simplifyTypes: true,
+                    compactQueryParams: true,
+                    descriptionLength: 100
+                }
+            },
+            'ultra-violence': {
+                name: "Ultra-Violence",
+                desc: "Aggressive - Maximum compression with short descriptions",
+                settings: {
+                    removeQuotes: true,
+                    compactSchemas: true,
+                    minimalEndpoints: true,
+                    singleStatusCodes: true,
+                    simplifyTypes: true,
+                    compactQueryParams: true,
+                    descriptionLength: 50
+                }
+            },
+            'nightmare': {
+                name: "Nightmare!",
+                desc: "Maximum Aggression - Zero mercy, zero unnecessary tokens",
+                settings: {
+                    removeQuotes: true,
+                    compactSchemas: true,
+                    minimalEndpoints: true,
+                    singleStatusCodes: true,
+                    simplifyTypes: true,
+                    compactQueryParams: true,
+                    descriptionLength: 0
+                }
+            }
+        };
 
         // DOM elements
         const inputTextarea = document.getElementById('input-spec');
@@ -424,9 +527,25 @@
         const errorMessage = document.getElementById('error-message');
         const outputButtons = document.getElementById('output-buttons');
         const conversionStats = document.getElementById('conversion-stats');
+        const difficultyMode = document.getElementById('difficulty-mode');
+        const currentModeName = document.getElementById('current-mode-name');
+        const currentModeDesc = document.getElementById('current-mode-desc');
         const loadExampleBtn = document.getElementById('load-example');
         const copyBtn = document.getElementById('copy-btn');
         const downloadBtn = document.getElementById('download-btn');
+        
+        // Optimization toggle elements
+        const optElements = {
+            removeQuotes: document.getElementById('opt-remove-quotes'),
+            compactSchemas: document.getElementById('opt-compact-schemas'),
+            minimalEndpoints: document.getElementById('opt-minimal-endpoints'),
+            singleStatusCodes: document.getElementById('opt-single-status-codes'),
+            simplifyTypes: document.getElementById('opt-simplify-types'),
+            compactQueryParams: document.getElementById('opt-compact-query-params')
+        };
+        
+        const descLengthSlider = document.getElementById('desc-length-slider');
+        const descLengthValue = document.getElementById('desc-length-value');
 
         // Utility functions
         function parseSpec(text) {
@@ -544,7 +663,8 @@
                     props.push(`${key}${marker}:${propType}`);
                 }
                 
-                return `{${props.join(',')}}`;  
+                const separator = ',';
+                return `{${props.join(separator)}}`;  
             }
             
             // Handle arrays
@@ -561,9 +681,14 @@
             return simplified;
         }
 
-        function truncateDescription(desc, maxLength = 100) {
+        function truncateDescription(desc) {
             if (!desc || typeof desc !== 'string') return undefined;
+            
+            // If length is 0, remove descriptions entirely
+            if (optimizations.descriptionLength === 0) return undefined;
+            
             const cleaned = desc.replace(/\s+/g, ' ').trim();
+            const maxLength = optimizations.descriptionLength;
             return cleaned.length <= maxLength ? cleaned : cleaned.substring(0, maxLength) + '...';
         }
 
@@ -583,7 +708,7 @@
                 simplified.sec = Object.keys(secSchemes);
             }
             
-            // Process endpoints - ultra-minimal format
+            // Process endpoints
             simplified.endpoints = [];
             
             if (spec.paths) {
@@ -591,47 +716,103 @@
                     for (const [method, operation] of Object.entries(pathItem)) {
                         if (!['get', 'post', 'put', 'patch', 'delete', 'head', 'options'].includes(method)) continue;
                         
-                        let endpointStr = `${method}:${path}`;
-                        
-                        // Add query parameters
-                        if (operation.parameters) {
-                            const queryParams = operation.parameters.filter(p => p.in === 'query');
-                            if (queryParams.length) {
-                                const qpStrs = queryParams.map(p => {
-                                    const baseType = p.schema?.type || p.type || 'unknown';
-                                    const format = p.schema?.format;
-                                    const isOptional = p.required === false;
-                                    const typeStr = simplifyType(baseType, format);
-                                    
-                                    let paramStr = `${p.name}${isOptional ? '?' : ''}:${typeStr}`;
-                                    if (p.schema?.enum) paramStr += `[${p.schema.enum.join('|')}]`;
-                                    return paramStr;
-                                });
-                                endpointStr += `?${qpStrs.join('&')}`;
+                        if (optimizations.minimalEndpoints) {
+                            // Ultra-minimal format: "get:/pets?limit?:int32 >Pets|List all pets"
+                            let endpointStr = `${method}:${path}`;
+                            
+                            // Add query parameters
+                            if (operation.parameters && optimizations.compactQueryParams) {
+                                const queryParams = operation.parameters.filter(p => p.in === 'query');
+                                if (queryParams.length) {
+                                    const qpStrs = queryParams.map(p => {
+                                        const baseType = p.schema?.type || p.type || 'unknown';
+                                        const format = p.schema?.format;
+                                        const isOptional = p.required === false;
+                                        const typeStr = simplifyType(baseType, format);
+                                        
+                                        let paramStr = `${p.name}${isOptional ? '?' : ''}:${typeStr}`;
+                                        if (p.schema?.enum) paramStr += `[${p.schema.enum.join('|')}]`;
+                                        return paramStr;
+                                    });
+                                    endpointStr += `?${qpStrs.join('&')}`;
+                                }
                             }
+                            
+                            // Add request body
+                            if (operation.requestBody?.content?.['application/json']?.schema?.$ref) {
+                                const reqType = cleanSchemaRef(operation.requestBody.content['application/json'].schema.$ref);
+                                endpointStr += ` <${reqType}`;
+                            }
+                            
+                            // Add response
+                            const responses = operation.responses;
+                            const okResponse = responses?.['200'] || responses?.['201'];
+                            if (okResponse?.content?.['application/json']?.schema?.$ref) {
+                                const resType = cleanSchemaRef(okResponse.content['application/json'].schema.$ref);
+                                endpointStr += ` >${resType}`;
+                            }
+                            
+                            // Add description
+                            const desc = truncateDescription(operation.summary || operation.description);
+                            if (desc) {
+                                endpointStr += `|${desc}`;
+                            }
+                            
+                            simplified.endpoints.push(endpointStr);
+                        } else {
+                            // Standard object format
+                            const endpoint = {
+                                method: method.toLowerCase(),
+                                path: path
+                            };
+                            
+                            // Add description
+                            const desc = truncateDescription(operation.summary || operation.description);
+                            if (desc) endpoint.description = desc;
+                            
+                            // Parameters
+                            if (operation.parameters) {
+                                const pathParams = operation.parameters.filter(p => p.in === 'path');
+                                const queryParams = operation.parameters.filter(p => p.in === 'query');
+                                
+                                if (pathParams.length) {
+                                    endpoint.pathParams = pathParams.map(p => {
+                                        const typeStr = simplifyType(p.schema?.type || p.type || 'unknown', p.schema?.format);
+                                        return `${p.name}:${typeStr}`;
+                                    });
+                                }
+                                
+                                if (queryParams.length) {
+                                    endpoint.queryParams = queryParams.map(p => {
+                                        const typeStr = simplifyType(p.schema?.type || p.type || 'unknown', p.schema?.format);
+                                        const isOptional = p.required === false;
+                                        return `${p.name}${isOptional ? '?' : ''}:${typeStr}`;
+                                    });
+                                }
+                            }
+                            
+                            // Request body
+                            if (operation.requestBody?.content?.['application/json']?.schema?.$ref) {
+                                endpoint.requestBody = cleanSchemaRef(operation.requestBody.content['application/json'].schema.$ref);
+                            }
+                            
+                            // Response
+                            const responses = operation.responses;
+                            const okResponse = responses?.['200'] || responses?.['201'];
+                            if (okResponse?.content?.['application/json']?.schema?.$ref) {
+                                endpoint.response = cleanSchemaRef(okResponse.content['application/json'].schema.$ref);
+                            }
+                            
+                            // Status codes
+                            const codes = Object.keys(responses || {}).map(Number).filter(c => !isNaN(c));
+                            if (optimizations.singleStatusCodes && codes.length === 1) {
+                                endpoint.statusCodes = codes[0];
+                            } else {
+                                endpoint.statusCodes = codes;
+                            }
+                            
+                            simplified.endpoints.push(endpoint);
                         }
-                        
-                        // Add request body
-                        if (operation.requestBody?.content?.['application/json']?.schema?.$ref) {
-                            const reqType = cleanSchemaRef(operation.requestBody.content['application/json'].schema.$ref);
-                            endpointStr += ` <${reqType}`;
-                        }
-                        
-                        // Add response
-                        const responses = operation.responses;
-                        const okResponse = responses?.['200'] || responses?.['201'];
-                        if (okResponse?.content?.['application/json']?.schema?.$ref) {
-                            const resType = cleanSchemaRef(okResponse.content['application/json'].schema.$ref);
-                            endpointStr += ` >${resType}`;
-                        }
-                        
-                        // Add description
-                        const desc = truncateDescription(operation.summary || operation.description);
-                        if (desc) {
-                            endpointStr += `|${desc}`;
-                        }
-                        
-                        simplified.endpoints.push(endpointStr);
                     }
                 }
             }
@@ -685,10 +866,10 @@
             outputButtons.style.display = 'flex';
             
             // Show conversion stats in arrow
-            const ratio = inputSpec.length > 0 ? (spec.length / inputSpec.length).toFixed(2) : '0.00';
+            const reductionPercent = inputSpec.length > 0 ? (((inputSpec.length - spec.length) / inputSpec.length) * 100).toFixed(0) : '0';
             conversionStats.innerHTML = `
                 <div>${inputSpec.length.toLocaleString()} chars</div>
-                <div style="font-size: 0.75rem; opacity: 0.8;">→ ${ratio}x smaller</div>
+                <div style="font-size: 0.75rem; opacity: 0.8;">→ ${reductionPercent}% smaller</div>
                 <div>${spec.length.toLocaleString()} chars</div>
             `;
             conversionStats.style.display = 'block';
@@ -710,24 +891,27 @@
             conversionStats.style.display = 'none';
         }
 
-        // Custom LLM-optimized serializer (removes unnecessary quotes)
+        // Custom LLM-optimized serializer with configurable optimizations
         function serializeForLLM(obj, indent = 0) {
             const spaces = '  '.repeat(indent);
             
             if (obj === null || obj === undefined) return 'null';
             if (typeof obj === 'boolean' || typeof obj === 'number') return String(obj);
             if (typeof obj === 'string') {
-                // Remove quotes for simple enum-like values
-                const simpleValues = ['get', 'post', 'put', 'patch', 'delete', 'head', 'options', 'string', 'integer', 'number', 'boolean', 'array', 'object'];
-                if (simpleValues.includes(obj) || /^[a-zA-Z_][a-zA-Z0-9_]*$/.test(obj)) {
-                    return obj;
+                if (optimizations.removeQuotes) {
+                    // Remove quotes for simple enum-like values
+                    const simpleValues = ['get', 'post', 'put', 'patch', 'delete', 'head', 'options', 'string', 'integer', 'number', 'boolean', 'array', 'object'];
+                    if (simpleValues.includes(obj) || /^[a-zA-Z_][a-zA-Z0-9_]*$/.test(obj)) {
+                        return obj;
+                    }
                 }
-                return JSON.stringify(obj); // Keep quotes for complex strings
+                return JSON.stringify(obj); // Keep quotes for complex strings or when optimization disabled
             }
             
             if (Array.isArray(obj)) {
                 if (obj.length === 0) return '[]';
-                const items = obj.map(item => serializeForLLM(item, indent + 1)).join(',');
+                const separator = ',';
+                const items = obj.map(item => serializeForLLM(item, indent + 1)).join(separator);
                 return `[${items}]`;
             }
             
@@ -736,13 +920,15 @@
                 if (entries.length === 0) return '{}';
                 
                 const pairs = entries.map(([key, value]) => {
-                    // Remove quotes from simple keys
-                    const keyStr = /^[a-zA-Z_][a-zA-Z0-9_]*$/.test(key) ? key : JSON.stringify(key);
+                    // Remove quotes from simple keys if optimization enabled
+                    const keyStr = (optimizations.removeQuotes && /^[a-zA-Z_][a-zA-Z0-9_]*$/.test(key)) ? key : JSON.stringify(key);
                     const valueStr = serializeForLLM(value, indent + 1);
-                    return `${keyStr}:${valueStr}`;
+                    const colon = ':';
+                    return `${keyStr}${colon}${valueStr}`;
                 });
                 
-                return `{${pairs.join(',')}}`;
+                const separator = ',';
+                return `{${pairs.join(separator)}}`;
             }
             
             return String(obj);
@@ -936,7 +1122,88 @@
             }
         });
 
+        // Apply difficulty mode preset
+        function applyDifficultyMode(mode) {
+            const preset = difficultyModes[mode];
+            if (!preset) return;
+            
+            // Update optimizations
+            optimizations = { ...preset.settings };
+            
+            // Update UI
+            currentModeName.textContent = preset.name;
+            currentModeDesc.textContent = preset.desc;
+            
+            // Update checkboxes and slider
+            Object.entries(optimizations).forEach(([key, value]) => {
+                if (optElements[key]) {
+                    optElements[key].checked = value;
+                }
+            });
+            
+            // Update description length slider
+            if (descLengthSlider) {
+                descLengthSlider.value = optimizations.descriptionLength;
+                updateDescLengthDisplay();
+            }
+            
+            // Reprocess if there's input
+            if (inputSpec.trim()) {
+                clearTimeout(processTimeout);
+                processTimeout = setTimeout(processSpec, 100);
+            }
+        }
+        
+        // Update optimizations from checkboxes and slider
+        function updateOptimizations() {
+            Object.entries(optElements).forEach(([key, element]) => {
+                if (element) {
+                    optimizations[key] = element.checked;
+                }
+            });
+            
+            // Update description length from slider
+            if (descLengthSlider) {
+                optimizations.descriptionLength = parseInt(descLengthSlider.value);
+            }
+            
+            // Reprocess if there's input (this will update the conversion stats)
+            if (inputSpec.trim()) {
+                clearTimeout(processTimeout);
+                processTimeout = setTimeout(processSpec, 100);
+            }
+        }
+        
+        // Update description length display
+        function updateDescLengthDisplay() {
+            if (descLengthValue && descLengthSlider) {
+                const value = parseInt(descLengthSlider.value);
+                descLengthValue.textContent = value === 0 ? 'None' : `${value} chars`;
+            }
+        }
+
+        // Event listeners
+        difficultyMode.addEventListener('change', (e) => {
+            applyDifficultyMode(e.target.value);
+        });
+        
+        // Add event listeners to all optimization checkboxes
+        Object.values(optElements).forEach(element => {
+            if (element) {
+                element.addEventListener('change', updateOptimizations);
+            }
+        });
+        
+        // Add event listener to description length slider
+        if (descLengthSlider) {
+            descLengthSlider.addEventListener('input', () => {
+                updateDescLengthDisplay();
+                updateOptimizations();
+            });
+        }
+        
         // Initialize
+        applyDifficultyMode('nightmare'); // Default to nightmare mode
         updateTitles();
     </script>
 </body>
