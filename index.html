@@ -679,6 +679,37 @@
                 return cleanSchemaRef(schema.$ref);
             }
             
+            // Handle oneOf, anyOf, allOf patterns
+            if (schema.oneOf) {
+                const options = schema.oneOf.map(option => {
+                    if (option.$ref) {
+                        return cleanSchemaRef(option.$ref);
+                    }
+                    return simplifySchema(option);
+                }).join('|');
+                return options;
+            }
+            
+            if (schema.anyOf) {
+                const options = schema.anyOf.map(option => {
+                    if (option.$ref) {
+                        return cleanSchemaRef(option.$ref);
+                    }
+                    return simplifySchema(option);
+                }).join('|');
+                return `${options}`;
+            }
+            
+            if (schema.allOf) {
+                const options = schema.allOf.map(option => {
+                    if (option.$ref) {
+                        return cleanSchemaRef(option.$ref);
+                    }
+                    return simplifySchema(option);
+                }).join('&');
+                return `${options}`;
+            }
+            
             // Handle simple types
             if (schema.type && !schema.properties && !schema.items) {
                 if (schema.enum) {
