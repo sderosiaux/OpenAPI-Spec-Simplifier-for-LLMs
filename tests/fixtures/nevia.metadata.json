@@ -1,0 +1,14 @@
+{
+  "source": "https://nevia.cloud/openapi.yaml",
+  "retrieved": "2026-10-15",
+  "sha256": "fd93c76d10b0e4f56006e28055bbb1a20e27e6bef1fc11f2c3d8cd55ff3bb937",
+  "inputBytes": 819510,
+  "operations": 58,
+  "schemas": 104,
+  "legacy": {
+    "commit": "bcae1d5",
+    "preset": "nightmare",
+    "outputCharacters": 12557,
+    "reductionPercent": 98.47
+  }
+}
